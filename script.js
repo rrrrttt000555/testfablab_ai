@@ -595,6 +595,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     ];
 
+    const teachersData = [
+        { name: 'Карен Рашоян', role: 'Преподаватель комплексной робототехники, программирование игр на Scratch, инженер будущего, создание игр в Roblox Studio', keywords: ['карен', 'рашоян'] },
+        { name: 'Сергей Сережкин', role: 'Игрофикатор. Преподаватель лаборатории по физике', keywords: ['сергей', 'сережкин'] },
+        { name: 'Анатолий Кизуров', role: 'Преподаватель динамического ровера, манипуляторы с ЧПУ', keywords: ['анатолий', 'кизуров'] },
+        { name: 'Артур Салахов', role: 'Преподаватель программирования игр на Unity', keywords: ['артур', 'салахов'] },
+        { name: 'Владимир Сутер', role: 'Преподаватель Python в Minecraft, интерактивное программирование', keywords: ['владимир', 'сутер'] },
+        { name: 'Екатерина Тиссен', role: 'Преподаватель Химия: магия реакций, Химия PRO', keywords: ['екатерина', 'тиссен'] },
+        { name: 'Михаил Смирнов', role: 'Преподаватель инженеры света, нефтегазовые технологии, нефтегазовые технологии PRO', keywords: ['михаил', 'смирнов'] },
+        { name: 'Татьяна Филатова', role: 'Преподаватель основы биологии, биология для будущих ученых', keywords: ['татьяна', 'филатова'] },
+        { name: 'Мария Симонова', role: 'Преподаватель основы создания игр на Unity', keywords: ['мария', 'симонова'] }
+    ];
+
     async function generateAIResponse(prompt) {
         const lower = prompt.toLowerCase();
         const containsAny = (text, keys) => keys.some(k => text.includes(k));
@@ -602,6 +614,50 @@ document.addEventListener('DOMContentLoaded', () => {
         // 1. Time
         if (containsAny(lower, ['сколько время', 'который час', 'текущее время'])) {
             return `**Точное время**\n\n${new Date().toLocaleTimeString('ru-RU')}`;
+        }
+
+        // 1.5 Teachers Logic
+        if (containsAny(lower, ['преподавател', 'учител', 'кто ведет', 'кто преподает', 'наставник', 'педагог'])) {
+            // Check for specific teacher by name
+            const foundTeacher = teachersData.find(t => containsAny(lower, t.keywords));
+            if (foundTeacher) {
+                return `**${foundTeacher.name}**\n${foundTeacher.role}`;
+            }
+
+            // Check for "Who teaches [Subject]"
+            // We can check if any course keywords are present and match them to teacher roles
+            // Simple heuristic: check if any word from teacher roles matches the query (excluding common words)
+            const subjectKeywords = lower.split(' ').filter(w => w.length > 3 && !['преподаватель', 'учитель', 'ведет', 'кто', 'какой'].includes(w));
+            const subjectTeachers = [];
+            
+            teachersData.forEach(t => {
+                const roleLower = t.role.toLowerCase();
+                const isMatch = subjectKeywords.some(k => {
+                    if (roleLower.includes(k)) return true;
+                    // Try simple stemming (remove last 1-2 chars) for Russian inflection
+                    if (k.length > 4) {
+                         if (roleLower.includes(k.slice(0, -1))) return true; // e.g. физику -> физик
+                         if (roleLower.includes(k.slice(0, -2))) return true; // e.g. химию -> хим
+                    }
+                    return false;
+                });
+                if (isMatch) subjectTeachers.push(t);
+            });
+
+            if (subjectTeachers.length > 0) {
+                 return `**Найденные преподаватели:**\n\n` + subjectTeachers.map(t => `🔹 **${t.name}**: ${t.role}`).join('\n');
+            }
+
+            // General List
+            if (containsAny(lower, ['кто', 'какие', 'список', 'все'])) {
+                return `**Наши преподаватели:**\n\n` + teachersData.map(t => `🔹 **${t.name}** — ${t.role}`).join('\n');
+            }
+        }
+        
+        // Also check if user just types a teacher's name without "teacher" keyword
+        const directTeacher = teachersData.find(t => containsAny(lower, t.keywords));
+        if (directTeacher) {
+            return `**${directTeacher.name}**\n${directTeacher.role}`;
         }
 
         // 2. Specific Schedule Check (High Priority)
@@ -729,15 +785,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (siteSnippet) return siteSnippet;
 
         // 3.1 Structured General Info (Scraped)
-        if (containsAny(lower, ['где', 'адрес', 'находитесь', 'location'])) {
-            if (scrapedContacts.address) return `**Адрес (с сайта):**\n\n${scrapedContacts.address}`;
-        }
-        if (containsAny(lower, ['телефон', 'номер', 'позвонить', 'связь', 'контакты'])) {
-            let info = "**Контакты (с сайта):**\n\n";
-            if (scrapedContacts.phone) info += `📞 Телефон: ${scrapedContacts.phone}\n`;
-            if (scrapedContacts.email) info += `✉️ Email: ${scrapedContacts.email}\n`;
-            if (scrapedContacts.address) info += `📍 Адрес: ${scrapedContacts.address}\n`;
-            if (info.length > 25) return info;
+        // if (containsAny(lower, ['где', 'адрес', 'находитесь', 'location'])) {
+        //    if (scrapedContacts.address) return `**Адрес (с сайта):**\n\n${scrapedContacts.address}`;
+        // }
+        if (containsAny(lower, [
+            'телефон', 'номер', 'позвонить', 'связь', 'контакты', 'как связаться', 'набрать', 'связаться',
+            'администратор', 'ресепшн', 'звонок', 'call', 'phone', 'contact', 'мобильный', 'сотовый',
+            'дайте номер', 'скажи номер', 'цифры', 'куда звонить', 'есть ли телефон'
+        ])) {
+            return "Хотите связаться с нами? +7 (3452) 57 48 42";
         }
         if (containsAny(lower, ['о нас', 'что такое фаблаб', 'кто вы', 'описание'])) {
             if (scrapedAbout) return `**О Фаблабе (с сайта):**\n\n${scrapedAbout}`;
@@ -753,7 +809,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (containsAny(lower, ['запис', 'попасть', 'лет', 'возраст', 'со скольки', 'от скольки'])) {
             return "Записаться на наши занятия можно от 7 лет. Подробнее на сайте академияпрофессийбудущего.рф";
         }
-        if (containsAny(lower, ['где', 'адрес', 'находитесь'])) return "**Адрес**\n\nг. Тюмень, ул. Ленина, 23.";
+        if (containsAny(lower, ['где', 'адрес', 'находитесь', 'куда ехать', 'куда подходить', 'местоположение', 'карта', 'как добраться', 'точка', 'геолокация'])) return "**Адрес**\n\nГ. Тюмень, ул. Ленина, 25.";
 
         // 5. Small Talk
         const smallTalk = [
