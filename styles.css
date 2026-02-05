@@ -17,6 +17,11 @@
     --bg-primary: #ffffff;
     --bg-secondary: #f4f6f8; /* Light Gray/Blueish */
     
+    --card-bg: #ffffff;
+    --nav-bg: #ffffff;
+    --banner-bg: #ffffff;
+    --banner-overlay: rgba(255,255,255,0.9);
+    
     --border-color: #e0e0e0;
     
     --shadow-sm: 0 2px 4px rgba(0,0,0,0.05);
@@ -29,6 +34,30 @@
     
     --font-heading: 'Montserrat', sans-serif;
     --font-body: 'Open Sans', sans-serif;
+}
+
+[data-theme="dark"] {
+    --primary-color: #66b2ff; /* Lighter blue for better contrast on dark */
+    --primary-dark: #3399ff;
+    --secondary-color: #00aaff;
+    --accent-color: #f39c12;
+    
+    --text-primary: #e0e0e0;
+    --text-secondary: #b0b0b0;
+    
+    --bg-primary: #121212;
+    --bg-secondary: #1e1e1e;
+    
+    --card-bg: #252525;
+    --nav-bg: #1a1a1a;
+    --banner-bg: #1a1a1a;
+    --banner-overlay: rgba(30,30,30,0.9);
+    
+    --border-color: #333333;
+    
+    --shadow-sm: 0 2px 4px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 8px rgba(0,0,0,0.4);
+    --shadow-lg: 0 8px 16px rgba(0,0,0,0.5);
 }
 
 body {
@@ -55,7 +84,7 @@ h1, h2, h3, h4, h5, h6 {
     position: fixed;
     top: 0;
     width: 100%;
-    background: #ffffff;
+    background: var(--nav-bg);
     border-bottom: 1px solid var(--border-color);
     box-shadow: var(--shadow-sm);
     z-index: 1000;
@@ -189,7 +218,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Hero Banner (New Style) */
 .hero-banner {
     padding: 120px 0 80px; /* Adjusted for fixed nav */
-    background: #ffffff;
+    background: var(--banner-bg);
     color: var(--text-primary);
     position: relative;
     overflow: hidden;
@@ -212,7 +241,7 @@ h1, h2, h3, h4, h5, h6 {
     flex-direction: column;
     align-items: center;
     z-index: 2;
-    background: rgba(255,255,255,0.9); /* Subtle backdrop */
+    background: var(--banner-overlay); /* Subtle backdrop */
     padding: 20px;
     border-radius: 20px;
 }
@@ -242,7 +271,7 @@ h1, h2, h3, h4, h5, h6 {
     font-size: 2.2rem;
     font-weight: 800;
     line-height: 1.1;
-    color: #1a1a1a;
+    color: var(--text-primary);
     text-transform: uppercase;
     margin-bottom: 15px;
     letter-spacing: 1px;
@@ -250,7 +279,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .banner-subtitle {
     font-size: 1rem;
-    color: #666;
+    color: var(--text-secondary);
     margin-bottom: 15px;
     font-weight: 500;
 }
@@ -368,7 +397,7 @@ h1, h2, h3, h4, h5, h6 {
 .generator-container {
     max-width: 800px;
     margin: 0 auto;
-    background: white;
+    background: var(--card-bg);
     border-radius: 8px; /* Sharper corners */
     padding: 40px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.08); /* More subtle shadow */
@@ -397,13 +426,15 @@ h1, h2, h3, h4, h5, h6 {
     resize: vertical;
     transition: border-color 0.3s ease;
     background: var(--bg-secondary);
+    color: var(--text-primary);
 }
 
 .input-group textarea:focus {
     outline: none;
     border-color: var(--secondary-color);
-    background: white;
+    background: var(--card-bg);
     box-shadow: 0 0 0 3px rgba(0, 170, 255, 0.1);
+    color: var(--text-primary);
 }
 
 .options-group {
@@ -426,7 +457,8 @@ h1, h2, h3, h4, h5, h6 {
     border: 2px solid var(--border-color);
     border-radius: 8px;
     font-size: 1rem;
-    background: white;
+    background: var(--card-bg);
+    color: var(--text-primary);
     transition: border-color 0.3s ease;
 }
 
@@ -539,7 +571,7 @@ h1, h2, h3, h4, h5, h6 {
 /* About Section */
 .about {
     padding: 80px 0;
-    background: white;
+    background: var(--bg-primary);
 }
 
 .about-content {
@@ -565,7 +597,7 @@ h1, h2, h3, h4, h5, h6 {
 .feature-item {
     text-align: center;
     padding: 30px 20px;
-    background: white;
+    background: var(--card-bg);
     border: 1px solid var(--border-color);
     border-radius: 12px;
     transition: transform 0.3s ease;
@@ -612,7 +644,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .feature-card {
-    background: white;
+    background: var(--card-bg);
     padding: 30px;
     border-radius: 8px; /* Slightly sharper corners for academic look */
     text-align: left; /* Aligned left like course descriptions */
@@ -723,7 +755,7 @@ h1, h2, h3, h4, h5, h6 {
         left: -100%;
         top: 70px;
         flex-direction: column;
-        background-color: white;
+        background-color: var(--nav-bg);
         width: 100%;
         text-align: center;
         transition: 0.3s;
@@ -833,6 +865,36 @@ html {
 
 /* --- Auth & Profile Styles --- */
 
+/* Theme Toggle Button */
+.theme-toggle {
+    background: var(--bg-secondary);
+    border: 2px solid var(--border-color);
+    color: var(--text-primary);
+    width: 45px;
+    height: 45px;
+    font-size: 1.4rem;
+    cursor: pointer;
+    margin-right: 15px;
+    border-radius: 50%; /* Circle */
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Bouncy transition */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: var(--shadow-sm);
+}
+
+.theme-toggle:hover {
+    background-color: var(--card-bg);
+    color: var(--secondary-color);
+    border-color: var(--secondary-color);
+    transform: rotate(15deg) scale(1.1);
+    box-shadow: var(--shadow-md);
+}
+
+.theme-toggle:active {
+    transform: scale(0.95);
+}
+
 .nav-auth {
     display: flex;
     align-items: center;
@@ -883,7 +945,7 @@ html {
     top: 100%;
     right: 0;
     width: 200px;
-    background: white;
+    background: var(--card-bg);
     border: 1px solid var(--border-color);
     border-radius: 8px;
     box-shadow: var(--shadow-lg);
@@ -953,7 +1015,7 @@ html {
     right: -350px;
     width: 320px;
     height: 100vh;
-    background: white;
+    background: var(--card-bg);
     box-shadow: -5px 0 20px rgba(0,0,0,0.1);
     z-index: 2000;
     transition: right 0.3s ease-in-out;
