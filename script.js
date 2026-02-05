@@ -6,6 +6,39 @@ document.addEventListener('DOMContentLoaded', () => {
     const copyBtn = document.getElementById('copy-btn');
     const generateBtn = document.getElementById('generate-btn');
 
+    // --- Theme Management ---
+    const themeToggle = document.getElementById('theme-toggle');
+    const themeIcon = themeToggle.querySelector('i');
+    
+    function setTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        localStorage.setItem('theme', theme);
+        
+        if (theme === 'dark') {
+            themeIcon.classList.remove('fa-moon');
+            themeIcon.classList.add('fa-sun');
+        } else {
+            themeIcon.classList.remove('fa-sun');
+            themeIcon.classList.add('fa-moon');
+        }
+    }
+    
+    // Check saved theme or system preference
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    if (savedTheme) {
+        setTheme(savedTheme);
+    } else if (prefersDark) {
+        setTheme('dark');
+    }
+    
+    themeToggle.addEventListener('click', () => {
+        const currentTheme = document.documentElement.getAttribute('data-theme');
+        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+        setTheme(newTheme);
+    });
+
     // --- Auth & History Elements ---
     const navAuth = document.getElementById('nav-auth');
     const authModal = document.getElementById('auth-modal');
@@ -356,29 +389,23 @@ document.addEventListener('DOMContentLoaded', () => {
     closeHistoryBtn.addEventListener('click', () => historySidebar.classList.remove('active'));
 
     // --- AI Logic ---
-    function handleGenerate() {
+    async function handleGenerate() {
         const prompt = document.getElementById('general-prompt').value.trim();
         if (!prompt) { showError('Введите запрос'); return; }
         showLoading();
-        const { isCode, language, complexity } = analyzePrompt(prompt);
-        if (isCode) {
-            setTimeout(() => {
-                const res = generateMockCodeResponse(prompt, language, complexity);
-                saveToHistory('code', prompt, res);
-                displayResult(res, 'code');
-            }, 2000);
-        } else {
-            (async () => {
-                try {
-                    await new Promise(r => setTimeout(r, 1000));
-                    const res = await generateAIResponse(prompt);
-                    saveToHistory('text', prompt, res);
-                    displayResult(res, 'text');
-                } catch (e) {
-                    console.error(e);
-                    displayResult("Ошибка генерации.", 'text');
-                }
-            })();
+        
+        try {
+            await new Promise(r => setTimeout(r, 1000)); // Thinking delay
+            const res = await generateAIResponse(prompt);
+            
+            // Determine type for history based on content
+            const isCodeResponse = res.includes('```') || res.includes('void setup') || res.includes('def ');
+            
+            saveToHistory(isCodeResponse ? 'code' : 'text', prompt, res);
+            displayResult(res, 'text');
+        } catch (e) {
+            console.error(e);
+            displayResult("Ошибка генерации.", 'text');
         }
     }
 
@@ -410,21 +437,63 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     async function fetchExternalKnowledge(query) {
+        // 1. Try Wikipedia first (Best for definitions and "What is" questions)
         try {
-            const searchUrl = `https://ru.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(query)}&limit=1&namespace=0&format=json&origin=*`;
-            const searchRes = await fetch(searchUrl);
-            const searchData = await searchRes.json();
-            if (!searchData[1] || searchData[1].length === 0) return null;
-            const title = searchData[1][0];
-            const contentUrl = `https://ru.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(title)}&format=json&origin=*`;
-            const contentRes = await fetch(contentUrl);
-            const contentData = await contentRes.json();
-            const pages = contentData.query.pages;
-            const pageId = Object.keys(pages)[0];
-            if (pageId === "-1") return null;
-            let extract = pages[pageId].extract;
-            return extract ? `**${title}**\n\n${extract.substring(0, 2000)}...` : null;
-        } catch (e) { return null; }
+            // Extract keywords for better Wiki search
+            // Remove common verbs/prepositions and "creative" requests
+            const cleanQuery = query.replace(/^(напиши|расскажи|сочини|кто|что|как|где|почему|зачем|статью|про|о|в|сгенерируй|идеи|придумай|дай|мне|для)\s+/gi, '').trim();
+            
+            if (cleanQuery.length > 2) {
+                const searchUrl = `https://ru.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(cleanQuery)}&limit=1&namespace=0&format=json&origin=*`;
+                const searchRes = await fetch(searchUrl);
+                const searchData = await searchRes.json();
+                
+                if (searchData[1] && searchData[1].length > 0) {
+                    const title = searchData[1][0];
+                    const contentUrl = `https://ru.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(title)}&format=json&origin=*`;
+                    const contentRes = await fetch(contentUrl);
+                    const contentData = await contentRes.json();
+                    const pages = contentData.query.pages;
+                    const pageId = Object.keys(pages)[0];
+                    if (pageId !== "-1") {
+                        let extract = pages[pageId].extract;
+                        if (extract) {
+                            return `**${title} (Википедия)**\n\n${extract}`;
+                        }
+                    }
+                }
+            }
+        } catch (e) { console.warn("Wiki failed", e); }
+
+        // 2. Try DuckDuckGo via Proxy (For everything else)
+        try {
+            if (query.length < 4) return null; // Skip very short queries
+            
+            console.log("Attempting Web Search for:", query);
+            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query))}`;
+            const res = await fetch(proxyUrl);
+            const data = await res.json();
+            
+            if (data.contents) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(data.contents, 'text/html');
+                const snippets = doc.querySelectorAll('.result__snippet');
+                
+                if (snippets && snippets.length > 0) {
+                    let combined = "";
+                    // Take top 3 results
+                    for (let i = 0; i < Math.min(3, snippets.length); i++) {
+                        const text = snippets[i].innerText.trim();
+                        if (text) combined += `• ${text}\n\n`;
+                    }
+                    if (combined) {
+                        return `**Нашел в интернете:**\n\n${combined}`;
+                    }
+                }
+            }
+        } catch (e) { console.warn("Web search failed", e); }
+
+        return null;
     }
 
     function findAnswerInSite(prompt) {
@@ -734,6 +803,17 @@ document.addEventListener('DOMContentLoaded', () => {
             return `На указанный запрос (${requestedDay || ''} ${requestedTime || ''} ${requestedAge ? requestedAge + ' лет' : ''}) курсов не найдено. Попробуйте изменить параметры.`;
         }
 
+        // Detect Creative/Generative Requests
+        const isCreativeRequest = containsAny(lower, ['идеи', 'придумай', 'что можно сделать', 'варианты', 'примеры', 'проект', 'сгенерируй', 'создать']);
+
+        if (isCreativeRequest) {
+             // Try to find a course match in scheduleData to show projects from description
+             const foundCourse = scheduleData.find(c => containsAny(lower, c.keywords));
+             if (foundCourse) {
+                 return `**Идеи проектов для курса "${foundCourse.name}":**\n\nИз программы курса: ${foundCourse.desc}\n\nТакже вы можете придумать и реализовать свой собственный уникальный проект!`;
+             }
+        }
+
         // Check SCRAPED courses first (if available) for generic queries
         if (scrapedCourses.length > 0) {
             // ... (rest of scraped courses logic)
@@ -750,7 +830,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             for (const course of scrapedCourses) {
-                 if (lower.includes(course.name.toLowerCase()) || (course.id !== 'unknown' && lower.includes(course.id))) {
+                 // Skip strict course matching if user asks for creative ideas
+                 if (!isCreativeRequest && (lower.includes(course.name.toLowerCase()) || (course.id !== 'unknown' && lower.includes(course.id)))) {
                     // Use new format for single course
                     const ageStr = course.age ? `(${course.age})` : '';
                     const priceStr = course.price ? `${course.price} (рассрочка действует)` : '';
@@ -761,7 +842,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Fallback to Hardcoded Schedule if scraping failed
         for (const course of scheduleData) {
-            if (containsAny(lower, course.keywords)) {
+            if (!isCreativeRequest && containsAny(lower, course.keywords)) {
                  const ageStr = course.age ? `(${course.age})` : '';
                  const priceStr = course.price ? `${course.price} (рассрочка действует)` : '';
                  return `**${course.name}** ${ageStr} ${priceStr} ${course.time}.\nℹ️ ${course.desc}\n\nПодробнее на сайте академияпрофессийбудущего.рф`;
@@ -826,11 +907,390 @@ document.addEventListener('DOMContentLoaded', () => {
             { k: ['любовь', 'ты любишь'], a: "Я люблю обрабатывать информацию, это моя страсть!" },
             { k: ['сколько тебе лет', 'возраст'], a: "Я вечно молод. Мой код обновляется постоянно." },
             { k: ['помоги', 'help'], a: "Конечно! Спрашивай про курсы, цены или просто поболтаем." },
-            { k: ['скучно', 'мне скучно'], a: "Давай поговорим о технологиях? Или я могу решить задачку." },
-            { k: ['дурак', 'тупой'], a: "Я только учусь. Если я ошибся, подскажи, как правильно." }
+            { k: ['скучно', 'мне скучно', 'развлеки'], a: "Давай поговорим о технологиях? Или я могу решить задачку. А еще я знаю много интересного из Википедии!" },
+            { k: ['дурак', 'тупой', 'глупый'], a: "Я только учусь. Если я ошибся, подскажи, как правильно, и я запомню." },
+            { k: ['да', 'ага', 'угу'], a: "Рад, что мы понимаем друг друга." },
+            { k: ['нет', 'не', 'не хочу'], a: "Хорошо, давай сменим тему. Что тебе интересно?" },
+            { k: ['хаха', 'лол', 'смешно'], a: "Смех продлевает жизнь! Рад, что поднял настроение." },
+            { k: ['как тебя зовут', 'имя'], a: "Меня зовут FabLab AI." },
+            { k: ['ты кто', 'представься'], a: "Я искусственный интеллект, созданный помогать студентам и гостям Фаблаба." },
+            { k: ['смысл жизни', 'зачем жить'], a: "42. А если серьезно — в постоянном развитии и познании нового." },
+            { k: ['спокойной ночи', 'сладких снов'], a: "Доброй ночи! Завтра будет новый день для открытий." },
+            { k: ['доброе утро'], a: "Доброе утро! Готов к новым свершениям?" },
+            { k: ['какой сегодня день', 'дата'], a: `Сегодня ${new Date().toLocaleDateString('ru-RU')}.` }
         ];
-        const talk = smallTalk.find(t => containsAny(lower, t.k));
+        const talk = smallTalk.find(t => {
+            return t.k.some(k => {
+                if (k.length <= 3) {
+                     // Strict word boundary check for short words (to avoid "да" matching "дай")
+                     const regex = new RegExp(`(^|[^а-яёa-z0-9])${k}([^а-яёa-z0-9]|$)`, 'i');
+                     return regex.test(lower);
+                }
+                return lower.includes(k);
+            });
+        });
         if (talk) return talk.a;
+
+        // 5.5 Code Generation
+        if (containsAny(lower, ['код', 'напиши программу', 'скрипт', 'пример кода', 'сделай сайт', 'напиши код'])) {
+             // ARDUINO LOGIC
+             if (lower.includes('arduino') || lower.includes('ардуино')) {
+                 const arduinoProjects = [
+                    {
+                        id: 'blink',
+                        keywords: ['мигание', 'светодиод', 'blink', 'лампочка', 'помигать'],
+                        title: 'Мигание светодиодом (Blink)',
+                        desc: 'Это "Hello World" в мире электроники. Самый простой проект, чтобы проверить плату.',
+                        wiring: '1. Вставьте светодиод в макетную плату.\n2. Длинную ножку (+) подключите к пину 13.\n3. Короткую ножку (-) через резистор 220 Ом подключите к GND (земля).\n(Примечание: На многих платах уже есть встроенный светодиод на пине 13).',
+                        code: `void setup() {
+  pinMode(13, OUTPUT); // Настраиваем 13 пин как выход
+}
+
+void loop() {
+  digitalWrite(13, HIGH); // Включаем светодиод
+  delay(1000);            // Ждем 1 секунду
+  digitalWrite(13, LOW);  // Выключаем светодиод
+  delay(1000);            // Ждем 1 секунду
+}`
+                    },
+                    {
+                        id: 'button',
+                        keywords: ['кнопк', 'button', 'включатель', 'нажати'],
+                        title: 'Управление светодиодом с кнопки',
+                        desc: 'Светодиод будет гореть, пока нажата кнопка.',
+                        wiring: '1. Светодиод: (+) к пину 13, (-) через резистор к GND.\n2. Кнопка: одну ножку к пину 2, другую к GND.\n3. (Используем внутреннюю подтяжку резистора в коде).',
+                        code: `const int buttonPin = 2;
+const int ledPin = 13;
+
+void setup() {
+  pinMode(ledPin, OUTPUT);
+  pinMode(buttonPin, INPUT_PULLUP); // Включаем встроенный резистор
+}
+
+void loop() {
+  int buttonState = digitalRead(buttonPin);
+  
+  // Так как INPUT_PULLUP инвертирует сигнал (LOW при нажатии)
+  if (buttonState == LOW) {
+    digitalWrite(ledPin, HIGH);
+  } else {
+    digitalWrite(ledPin, LOW);
+  }
+}`
+                    },
+                    {
+                        id: 'servo',
+                        keywords: ['серво', 'servo', 'мотор', 'двигатель'],
+                        title: 'Управление сервоприводом',
+                        desc: 'Сервопривод будет плавно поворачиваться от 0 до 180 градусов.',
+                        wiring: '1. Коричневый провод (GND) -> GND\n2. Красный провод (VCC) -> 5V\n3. Оранжевый провод (Signal) -> Пин 9',
+                        code: `#include <Servo.h>
+
+Servo myservo; 
+
+void setup() {
+  myservo.attach(9); // Подключаем серво к 9 пину
+}
+
+void loop() {
+  for (int pos = 0; pos <= 180; pos += 1) { 
+    myservo.write(pos);              
+    delay(15);                       
+  }
+  for (int pos = 180; pos >= 0; pos -= 1) { 
+    myservo.write(pos);              
+    delay(15);                       
+  }
+}`
+                    },
+                    {
+                        id: 'traffic',
+                        keywords: ['светофор', 'traffic', 'базовый набор', 'набор'],
+                        title: 'Светофор (Базовый набор)',
+                        desc: 'Имитация работы светофора с тремя светодиодами: красным, желтым и зеленым.',
+                        wiring: '1. Красный светодиод: (+) к пину 12, (-) через резистор к GND.\n2. Желтый светодиод: (+) к пину 11, (-) через резистор к GND.\n3. Зеленый светодиод: (+) к пину 10, (-) через резистор к GND.',
+                        code: `void setup() {
+  pinMode(12, OUTPUT); // Красный
+  pinMode(11, OUTPUT); // Желтый
+  pinMode(10, OUTPUT); // Зеленый
+}
+
+void loop() {
+  digitalWrite(12, HIGH); // Красный
+  delay(3000);
+  digitalWrite(12, LOW);
+  
+  digitalWrite(11, HIGH); // Желтый
+  delay(1000);
+  digitalWrite(11, LOW);
+  
+  digitalWrite(10, HIGH); // Зеленый
+  delay(3000);
+  digitalWrite(10, LOW);
+  
+  digitalWrite(11, HIGH); // Желтый перед красным
+  delay(1000);
+  digitalWrite(11, LOW);
+}`
+                    },
+                    {
+                        id: 'potentiometer',
+                        keywords: ['потенциометр', 'резистор', 'крутилка', 'яркость'],
+                        title: 'Регулировка яркости потенциометром',
+                        desc: 'Изменяем яркость светодиода, вращая ручку потенциометра.',
+                        wiring: '1. Потенциометр: крайние ножки к 5V и GND, среднюю к A0.\n2. Светодиод: (+) к пину 9 (PWM), (-) через резистор к GND.',
+                        code: `void setup() {
+  pinMode(9, OUTPUT);
+}
+
+void loop() {
+  int val = analogRead(A0); // Читаем значение (0-1023)
+  int brightness = map(val, 0, 1023, 0, 255); // Переводим в (0-255)
+  analogWrite(9, brightness);
+}`
+                    },
+                    {
+                        id: 'game',
+                        keywords: ['игра', 'игру', 'game', 'реакция', 'реакцию', 'развлечение', 'интересный', 'интересное'],
+                        title: 'Игра "Проверка реакции"',
+                        desc: 'Светодиод загорается через случайное время. Ваша задача — нажать кнопку как можно быстрее! Результат (время в мс) будет выведен в Монитор порта.',
+                        wiring: '1. Светодиод: (+) к пину 13, (-) к GND.\n2. Кнопка: один контакт к пину 2, второй к GND.',
+                        code: `const int ledPin = 13;
+const int buttonPin = 2;
+unsigned long startTime;
+unsigned long reactionTime;
+
+void setup() {
+  pinMode(ledPin, OUTPUT);
+  pinMode(buttonPin, INPUT_PULLUP);
+  Serial.begin(9600);
+  Serial.println("Приготовьтесь...");
+  randomSeed(analogRead(0));
+}
+
+void loop() {
+  digitalWrite(ledPin, LOW);
+  delay(random(2000, 5000)); // Ждем случайное время
+  
+  digitalWrite(ledPin, HIGH); // Включаем!
+  startTime = millis();
+  
+  while(digitalRead(buttonPin) == HIGH) {
+    // Ждем нажатия
+  }
+  
+  reactionTime = millis() - startTime;
+  digitalWrite(ledPin, LOW);
+  
+  Serial.print("Ваша реакция: ");
+  Serial.print(reactionTime);
+  Serial.println(" мс");
+  
+  delay(3000); // Пауза перед следующим раундом
+  Serial.println("Снова...");
+}`
+                    },
+                    {
+                        id: 'ultrasonic',
+                        keywords: ['дальномер', 'парктроник', 'hc-sr04', 'расстояние', 'дистанция'],
+                        title: 'Парктроник (HC-SR04)',
+                        desc: 'Измеряем расстояние до объекта с помощью ультразвукового датчика.',
+                        wiring: '1. VCC -> 5V\n2. GND -> GND\n3. Trig -> Пин 9\n4. Echo -> Пин 10',
+                        code: `const int trigPin = 9;
+const int echoPin = 10;
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+}
+
+void loop() {
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  long duration = pulseIn(echoPin, HIGH);
+  int distance = duration * 0.034 / 2;
+
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.println(" cm");
+  delay(100);
+}`
+                    },
+                    {
+                        id: 'lcd',
+                        keywords: ['экран', 'дисплей', 'lcd', '1602', 'i2c', 'монитор'],
+                        title: 'LCD Дисплей 1602 (I2C)',
+                        desc: 'Вывод текста на экран. Требуется библиотека LiquidCrystal_I2C.',
+                        wiring: '1. GND -> GND\n2. VCC -> 5V\n3. SDA -> A4 (на Uno)\n4. SCL -> A5 (на Uno)',
+                        code: `#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
+
+// Адрес обычно 0x27 или 0x3F
+LiquidCrystal_I2C lcd(0x27,16,2);  
+
+void setup() {
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0,0);
+  lcd.print("Hello, FabLab!");
+  lcd.setCursor(0,1);
+  lcd.print("Arduino is fun");
+}
+
+void loop() {
+  // Ничего не делаем, текст статичен
+}`
+                    },
+                    {
+                        id: 'dht',
+                        keywords: ['температура', 'влажность', 'dht', 'градусник', 'погода', 'метеостанция'],
+                        title: 'Метеостанция (DHT11/DHT22)',
+                        desc: 'Считывание температуры и влажности. Требуется библиотека DHT sensor library.',
+                        wiring: '1. VCC -> 5V\n2. GND -> GND\n3. DATA -> Пин 2',
+                        code: `#include "DHT.h"
+#define DHTPIN 2
+#define DHTTYPE DHT11 // Или DHT22
+
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(9600);
+  dht.begin();
+}
+
+void loop() {
+  delay(2000);
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+
+  Serial.print("Humidity: ");
+  Serial.print(h);
+  Serial.print(" %\t");
+  Serial.print("Temperature: ");
+  Serial.print(t);
+  Serial.println(" *C");
+}`
+                    },
+                    {
+                        id: 'buzzer',
+                        keywords: ['пищалка', 'баззер', 'buzzer', 'музыка', 'мелодия', 'звук'],
+                        title: 'Музыкальная шкатулка (Пьезопищалка)',
+                        desc: 'Проигрывание мелодии с помощью пассивного баззера.',
+                        wiring: '1. Плюс (длинная нога) -> Пин 8\n2. Минус (короткая) -> GND',
+                        code: `int buzzer = 8;
+
+void setup() {
+  pinMode(buzzer, OUTPUT);
+}
+
+void loop() {
+  tone(buzzer, 1000); // 1000 Гц
+  delay(1000);        
+  noTone(buzzer);     // Тишина
+  delay(1000);        
+  
+  tone(buzzer, 500); 
+  delay(500);        
+  noTone(buzzer);     
+  delay(500); 
+}`
+                    },
+                    {
+                        id: 'rgb',
+                        keywords: ['rgb', 'цветной', 'цвета', 'светодиод rgb'],
+                        title: 'RGB Светодиод (Смешивание цветов)',
+                        desc: 'Плавное изменение цветов радуги.',
+                        wiring: '1. R (Красный) -> Пин 9 (PWM)\n2. G (Зеленый) -> Пин 10 (PWM)\n3. B (Синий) -> Пин 11 (PWM)\n4. Общий (GND или VCC) -> соответственно',
+                        code: `int redPin = 9;
+int greenPin = 10;
+int bluePin = 11;
+
+void setup() {
+  pinMode(redPin, OUTPUT);
+  pinMode(greenPin, OUTPUT);
+  pinMode(bluePin, OUTPUT);
+}
+
+void setColor(int r, int g, int b) {
+  analogWrite(redPin, r);
+  analogWrite(greenPin, g);
+  analogWrite(bluePin, b);
+}
+
+void loop() {
+  setColor(255, 0, 0); // Красный
+  delay(1000);
+  setColor(0, 255, 0); // Зеленый
+  delay(1000);
+  setColor(0, 0, 255); // Синий
+  delay(1000);
+}`
+                    },
+                    {
+                        id: 'ldr',
+                        keywords: ['фоторезистор', 'свет', 'ночник', 'освещение', 'датчик света'],
+                        title: 'Автоматический ночник',
+                        desc: 'Светодиод включается, когда становится темно.',
+                        wiring: '1. Фоторезистор + Резистор 10кОм (делитель напряжения).\n2. Точка соединения -> А0.\n3. Светодиод -> Пин 13.',
+                        code: `void setup() {
+  pinMode(13, OUTPUT);
+}
+
+void loop() {
+  int light = analogRead(A0);
+  if (light < 500) { // Если темно
+    digitalWrite(13, HIGH);
+  } else {
+    digitalWrite(13, LOW);
+  }
+  delay(100);
+}`
+                    },
+                    {
+                        id: 'relay',
+                        keywords: ['реле', 'relay', 'розетка', 'нагрузка', '220'],
+                        title: 'Управление Реле',
+                        desc: 'Включение мощной нагрузки (например, лампы).',
+                        wiring: '1. VCC -> 5V\n2. GND -> GND\n3. IN -> Пин 7',
+                        code: `int relayPin = 7;
+
+void setup() {
+  pinMode(relayPin, OUTPUT);
+}
+
+void loop() {
+  digitalWrite(relayPin, HIGH); // Включить
+  delay(2000);
+  digitalWrite(relayPin, LOW);  // Выключить
+  delay(2000);
+}`
+                    }
+                 ];
+
+                 // Find best match
+                 let project = arduinoProjects.find(p => containsAny(lower, p.keywords));
+                 
+                 // Default to Blink if just "arduino code" asked
+                 if (!project) project = arduinoProjects[0];
+
+                 return `**Проект: ${project.title}**\n\n**Описание:**\n${project.desc}\n\n**Подключение (Wiring):**\n${project.wiring}\n\n**Код:**\n\`\`\`cpp\n${project.code}\n\`\`\``;
+             }
+             
+             if (lower.includes('python') || lower.includes('пайтон')) {
+                 return "**Пример кода на Python (Калькулятор):**\n\n```python\ndef add(x, y):\n    return x + y\n\nprint('Сумма 2 + 2 =', add(2, 2))\n```";
+             }
+             if (lower.includes('html') || lower.includes('сайт')) {
+                 return "**Пример HTML страницы:**\n\n```html\n<!DOCTYPE html>\n<html>\n<head><title>Мой сайт</title></head>\n<body>\n  <h1>Привет, мир!</h1>\n  <p>Это моя первая страница.</p>\n</body>\n</html>\n```";
+             }
+             if (lower.includes('javascript') || lower.includes('js')) {
+                 return "**Пример кода на JavaScript:**\n\n```javascript\nconsole.log('Привет из FabLab AI!');\nalert('Нажми меня');\n```";
+             }
+        }
 
         // 6. Math
         const math = trySolveMath(lower);
@@ -841,13 +1301,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (lower.includes(k)) return `**${k.charAt(0).toUpperCase() + k.slice(1)}**\n\n${v}`;
         }
 
-        // 8. Wiki
-        if (prompt.length > 10) {
-            const wiki = await fetchExternalKnowledge(prompt);
-            if (wiki) return wiki;
-        }
+        // 8. Wiki & Web Search (Universal Fallback)
+        // Always try to find an answer if nothing else matched
+        const externalAnswer = await fetchExternalKnowledge(prompt);
+        if (externalAnswer) return externalAnswer;
 
-        return "Я пока не знаю ответа. Попробуйте спросить о наших курсах!";
+        // 9. Ultimate Fallback
+        return "Я пока не нашел точного ответа, но я постоянно учусь! Попробуйте переформулировать вопрос.";
     }
 
     document.getElementById('generate-btn').addEventListener('click', handleGenerate);
@@ -876,11 +1336,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Helpers
     function showLoading() { resultContent.innerHTML = '<div class="loading-spinner"><i class="fas fa-circle-notch fa-spin"></i><p>Думаю...</p></div>'; }
     function displayResult(content, type) {
-        let formatted = content.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
-        if (type === 'code') formatted = `<pre><code>${content}</code></pre>`;
+        // Basic Markdown Support
+        let formatted = content
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;') // Escape HTML first
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/```(\w+)?\s*([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>') // Code blocks with lang support
+            .replace(/`([^`]+)`/g, '<code>$1</code>') // Inline code
+            .replace(/\n/g, '<br>');
+
+        // If type is explicitly 'code' (from legacy history), wrap if not wrapped
+        if (type === 'code' && !formatted.includes('<pre>')) {
+            formatted = `<pre><code>${formatted}</code></pre>`;
+        }
+        
         resultContent.innerHTML = formatted;
     }
-    function generateMockCodeResponse(prompt, lang) { return `// Mock code for ${lang}\nconsole.log("Hello");`; }
     function showToast(msg, type) {
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
