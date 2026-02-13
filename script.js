@@ -5,6 +5,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultContent = document.getElementById('result-content');
     const copyBtn = document.getElementById('copy-btn');
     const generateBtn = document.getElementById('generate-btn');
+    const generalPrompt = document.getElementById('general-prompt');
+
+    // Attach listeners early to ensure they work even if later code fails
+    if (generateBtn) {
+        generateBtn.addEventListener('click', handleGenerate);
+        console.log("Generate button listener attached");
+    } else {
+        console.error("Generate button not found!");
+    }
+
+    if (generalPrompt) {
+        generalPrompt.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleGenerate(); });
+    }
 
     // --- Theme Management ---
     const themeToggle = document.getElementById('theme-toggle');
@@ -390,22 +403,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- AI Logic ---
     async function handleGenerate() {
-        const prompt = document.getElementById('general-prompt').value.trim();
-        if (!prompt) { showError('Введите запрос'); return; }
-        showLoading();
-        
         try {
-            await new Promise(r => setTimeout(r, 1000)); // Thinking delay
-            const res = await generateAIResponse(prompt);
+            const inputEl = document.getElementById('general-prompt');
+            const inputPrompt = inputEl ? inputEl.value.trim() : '';
             
-            // Determine type for history based on content
-            const isCodeResponse = res.includes('```') || res.includes('void setup') || res.includes('def ');
+            let prompt = inputPrompt;
+            try {
+                if (typeof fixKeyboardLayout === 'function') {
+                    prompt = fixKeyboardLayout(inputPrompt);
+                }
+            } catch (e) {
+                console.error('Layout fix error:', e);
+            }
+
+            if (!prompt) { 
+                if (typeof showError === 'function') showError('Введите запрос');
+                else alert('Введите запрос'); 
+                return; 
+            }
             
-            saveToHistory(isCodeResponse ? 'code' : 'text', prompt, res);
-            displayResult(res, 'text');
-        } catch (e) {
-            console.error(e);
-            displayResult("Ошибка генерации.", 'text');
+            if (typeof showLoading === 'function') showLoading();
+            
+            try {
+                // Удалена искусственная задержка для ускорения ответа
+                
+                let res = "Извините, произошла ошибка.";
+                if (typeof generateAIResponse === 'function') {
+                    res = await generateAIResponse(prompt);
+                }
+                
+                // Determine type for history based on content
+                const isCodeResponse = res.includes('```') || res.includes('void setup') || res.includes('def ');
+                
+                if (typeof saveToHistory === 'function') saveToHistory(isCodeResponse ? 'code' : 'text', prompt, res);
+                if (typeof displayResult === 'function') displayResult(res, 'text');
+            } catch (e) {
+                console.error(e);
+                if (typeof displayResult === 'function') displayResult("Ошибка генерации: " + e.message, 'text');
+            }
+        } catch (criticalError) {
+            console.error("Critical error in handleGenerate:", criticalError);
+            alert("Произошла ошибка: " + criticalError.message);
         }
     }
 
@@ -416,6 +454,73 @@ document.addEventListener('DOMContentLoaded', () => {
         if (lower.match(/js|javascript/)) language = 'javascript';
         else if (lower.match(/html|css/)) language = 'html';
         return { isCode, language, complexity: 'medium' };
+    }
+
+    const whitelist = new Set([
+        // Tech
+        'python', 'java', 'javascript', 'js', 'html', 'css', 'scratch', 'roblox', 'unity', 'blender', 
+        'arduino', 'minecraft', 'lego', 'fablab', 'fab', 'lab', 'bot', 'ai', 'gpt', 'api', 
+        'url', 'http', 'https', 'www', 'ru', 'com', 'net', 'org', 'c++', 'c#', 'php', 'sql',
+        'code', 'program', 'function', 'var', 'let', 'const', 'server', 'client', 'error', 'bug', 'data',
+        'database', 'backend', 'frontend', 'fullstack', 'dev', 'developer', 'web', 'app', 'application',
+        'system', 'windows', 'linux', 'mac', 'os', 'android', 'ios', 'git', 'github', 'gitlab',
+        
+        // Commands & Languages
+        'translate', 'translation', 'meaning', 'language', 'text', 'word', 'message',
+        'english', 'russian', 'french', 'german', 'spanish', 'italian', 'chinese', 'japanese', 'korean', 'arabic',
+        'en', 'ru', 'fr', 'de', 'es', 'it', 'zh', 'ja', 'ko', 'ar',
+
+        // Common English Words (Top 200+)
+        'the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'i', 'it', 'for', 'not', 'on', 'with', 'he', 
+        'as', 'you', 'do', 'at', 'this', 'but', 'his', 'by', 'from', 'they', 'we', 'say', 'her', 'she', 'or', 
+        'an', 'will', 'my', 'one', 'all', 'would', 'there', 'their', 'what', 'so', 'up', 'out', 'if', 'about', 
+        'who', 'get', 'which', 'go', 'me', 'when', 'make', 'can', 'like', 'time', 'no', 'just', 'him', 'know', 
+        'take', 'people', 'into', 'year', 'your', 'good', 'some', 'could', 'them', 'see', 'other', 'than', 
+        'then', 'now', 'look', 'only', 'come', 'its', 'over', 'think', 'also', 'back', 'after', 'use', 'two', 
+        'how', 'our', 'work', 'first', 'well', 'way', 'even', 'new', 'want', 'because', 'any', 'these', 'give', 
+        'day', 'most', 'us', 'is', 'are', 'was', 'were', 'hello', 'hi', 'thanks', 'please', 'yes', 'no', 'ok',
+        'love', 'world', 'life', 'start', 'end', 'stop', 'play', 'game', 'learn', 'school', 'student', 'teacher',
+        'friend', 'family', 'house', 'home', 'car', 'money', 'food', 'water', 'sleep', 'night', 'morning',
+        'write', 'read', 'speak', 'listen', 'watch', 'buy', 'sell', 'open', 'close', 'run', 'walk', 'sit', 'stand',
+        'big', 'small', 'fast', 'slow', 'hot', 'cold', 'happy', 'sad', 'beautiful', 'ugly', 'good', 'bad',
+        'red', 'green', 'blue', 'black', 'white', 'yellow', 'orange', 'purple', 'brown', 'pink',
+        'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'
+    ]);
+
+    function fixKeyboardLayout(text) {
+        if (!text) return '';
+        const map = {
+            '`':'ё','q':'й','w':'ц','e':'у','r':'к','t':'е','y':'н','u':'г','i':'ш','o':'щ','p':'з','[':'х',']':'ъ',
+            'a':'ф','s':'ы','d':'в','f':'а','g':'п','h':'р','j':'о','k':'л','l':'д',';':'ж','\'':'э',
+            'z':'я','x':'ч','c':'с','v':'м','b':'и','n':'т','m':'ь',',':'б','.':'ю','/':'.'
+        };
+
+        const words = text.match(/[a-zA-Z]+/g) || [];
+        const totalEngWords = words.length;
+
+        // Heuristic: If significant part of the words are known English words, assume the whole text is English
+        // and do not attempt to fix layout.
+        let knownCount = 0;
+        for (const w of words) {
+            if (whitelist.has(w.toLowerCase())) knownCount++;
+        }
+
+        // If > 40% of words are known English words, OR if there's only 1 word and it's known
+        // Return original text
+        if (totalEngWords > 0) {
+            const ratio = knownCount / totalEngWords;
+            // Снижаем порог, чтобы чаще исправлять опечатки (было 0.4)
+            if (ratio > 0.6 || (totalEngWords === 1 && knownCount === 1)) {
+                return text;
+            }
+        }
+
+        // Otherwise, replace only words that are NOT in the whitelist
+        return text.replace(/[a-zA-Z]/g, (ch) => {
+            const lower = ch.toLowerCase();
+            const ru = map[lower] || ch;
+            return ch === lower ? ru : (typeof ru === 'string' ? ru.toUpperCase() : ru);
+        });
     }
 
     const knowledgeBase = {
@@ -436,63 +541,175 @@ document.addEventListener('DOMContentLoaded', () => {
         'медицина': "Медицина — наука о здоровье и лечении."
     };
 
+    // Timeout Helper
+    const fetchWithTimeout = async (resource, options = {}) => {
+        const { timeout = 4000 } = options;
+        
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeout);
+        const response = await fetch(resource, {
+            ...options,
+            signal: controller.signal  
+        });
+        clearTimeout(id);
+        return response;
+    };
+
     async function fetchExternalKnowledge(query) {
-        // 1. Try Wikipedia first (Best for definitions and "What is" questions)
-        try {
-            // Extract keywords for better Wiki search
-            // Remove common verbs/prepositions and "creative" requests
-            const cleanQuery = query.replace(/^(напиши|расскажи|сочини|кто|что|как|где|почему|зачем|статью|про|о|в|сгенерируй|идеи|придумай|дай|мне|для)\s+/gi, '').trim();
-            
-            if (cleanQuery.length > 2) {
-                const searchUrl = `https://ru.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(cleanQuery)}&limit=1&namespace=0&format=json&origin=*`;
-                const searchRes = await fetch(searchUrl);
-                const searchData = await searchRes.json();
-                
-                if (searchData[1] && searchData[1].length > 0) {
-                    const title = searchData[1][0];
-                    const contentUrl = `https://ru.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(title)}&format=json&origin=*`;
-                    const contentRes = await fetch(contentUrl);
-                    const contentData = await contentRes.json();
-                    const pages = contentData.query.pages;
-                    const pageId = Object.keys(pages)[0];
-                    if (pageId !== "-1") {
-                        let extract = pages[pageId].extract;
-                        if (extract) {
-                            return `**${title} (Википедия)**\n\n${extract}`;
+        // Advanced Cleaning Logic
+        let cleanQuery = query.trim();
+        
+        // 1. Remove "Creative/Action" prefixes iteratively
+        const prefixRegex = /^(напиши|расскажи|сочини|кто|что|как|где|почему|зачем|статью|про|о|в|сгенерируй|идеи|придумай|дай|мне|для|покажи|найди)\s+/i;
+        let oldQuery;
+        do {
+            oldQuery = cleanQuery;
+            cleanQuery = cleanQuery.replace(prefixRegex, '').trim();
+        } while (cleanQuery !== oldQuery && cleanQuery.length > 0);
+
+        // 2. Remove "Constraints" (e.g. "до 400 слов", "кратко", "подробно")
+        cleanQuery = cleanQuery.replace(/\s+(до|около|примерно)?\s*\d+\s*(слов|символов|знаков).*/i, '');
+        cleanQuery = cleanQuery.replace(/\s+(кратко|подробно|в деталях|с примерами).*/i, '');
+        cleanQuery = cleanQuery.trim();
+
+        // 3. Fallback: if cleaning killed everything, use original query
+        if (cleanQuery.length < 2) cleanQuery = query;
+
+        // Define Wiki Search Promise
+        const wikiPromise = (async () => {
+            try {
+                if (cleanQuery.length > 2) {
+                    const searchUrl = `https://ru.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(cleanQuery)}&limit=1&namespace=0&format=json&origin=*`;
+                    const searchRes = await fetchWithTimeout(searchUrl, { timeout: 4000 });
+                    const searchData = await searchRes.json();
+                    
+                    if (searchData[1] && searchData[1].length > 0) {
+                        const title = searchData[1][0];
+                        const contentUrl = `https://ru.wikipedia.org/w/api.php?action=query&prop=extracts&exintro&explaintext&titles=${encodeURIComponent(title)}&format=json&origin=*`;
+                        const contentRes = await fetchWithTimeout(contentUrl, { timeout: 4000 });
+                        const contentData = await contentRes.json();
+                        const pages = contentData.query.pages;
+                        const pageId = Object.keys(pages)[0];
+                        if (pageId !== "-1") {
+                            let extract = pages[pageId].extract;
+                            if (extract) {
+                                return `**${title} (Википедия)**\n\n${extract}`;
+                            }
                         }
                     }
                 }
-            }
-        } catch (e) { console.warn("Wiki failed", e); }
+            } catch (e) { console.warn("Wiki failed/timed out", e); }
+            return null;
+        })();
 
-        // 2. Try DuckDuckGo via Proxy (For everything else)
-        try {
-            if (query.length < 4) return null; // Skip very short queries
-            
-            console.log("Attempting Web Search for:", query);
-            const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query))}`;
-            const res = await fetch(proxyUrl);
-            const data = await res.json();
-            
-            if (data.contents) {
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(data.contents, 'text/html');
-                const snippets = doc.querySelectorAll('.result__snippet');
+        // Define Google/Web Search Promise
+        const webPromise = (async () => {
+            try {
+                // Use CLEAN query for web search too, it's often better
+                const qSearch = cleanQuery.length > 3 ? cleanQuery : query;
+                const augmentedQuery = qSearch.toLowerCase().includes('академияпрофессийбудущего') ? qSearch : `${qSearch} академияпрофессийбудущего`;
                 
-                if (snippets && snippets.length > 0) {
-                    let combined = "";
-                    // Take top 3 results
-                    for (let i = 0; i < Math.min(3, snippets.length); i++) {
-                        const text = snippets[i].innerText.trim();
-                        if (text) combined += `• ${text}\n\n`;
-                    }
-                    if (combined) {
-                        return `**Нашел в интернете:**\n\n${combined}`;
+                // Try Google via Proxy
+                const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(augmentedQuery)}&hl=ru`;
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(googleUrl)}`;
+                const res = await fetchWithTimeout(proxyUrl, { timeout: 4500 });
+                const data = await res.json();
+                if (data.contents) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(data.contents, 'text/html');
+                    // Google selectors change often, try multiple strategies
+                    const items = doc.querySelectorAll('.g, .MjjYud, .tF2Cxc'); 
+                    if (items && items.length > 0) {
+                        let combined = "";
+                        for (let i = 0; i < Math.min(3, items.length); i++) {
+                            const item = items[i];
+                            const snippetEl = item.querySelector('.VwiC3b') || item.querySelector('.IsZvec') || item.querySelector('.aCOpRe') || item.querySelector('span');
+                            const text = (snippetEl ? snippetEl.innerText : item.innerText).trim();
+                            if (text && text.length > 30) combined += `• ${text}\n\n`;
+                        }
+                        if (combined) return `**Нашел в интернете (Google):**\n\n${combined}`;
                     }
                 }
-            }
-        } catch (e) { console.warn("Web search failed", e); }
+            } catch (e) { console.warn("Google search failed/timed out", e); }
+            
+            // Fallback to DuckDuckGo if Google failed inside this promise
+            try {
+                const qSearch = cleanQuery.length > 3 ? cleanQuery : query;
+                const augmentedQuery = qSearch.toLowerCase().includes('академияпрофессийбудущего') ? qSearch : `${qSearch} академияпрофессийбудущего`;
+                
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(augmentedQuery))}`;
+                const res = await fetchWithTimeout(proxyUrl, { timeout: 4500 });
+                const data = await res.json();
+                
+                if (data.contents) {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(data.contents, 'text/html');
+                    const snippets = doc.querySelectorAll('.result__snippet');
+                    if (snippets && snippets.length > 0) {
+                        let combined = "";
+                        for (let i = 0; i < Math.min(3, snippets.length); i++) {
+                            const text = snippets[i].innerText.trim();
+                            if (text) combined += `• ${text}\n\n`;
+                        }
+                        if (combined) return `**Нашел в интернете:**\n\n${combined}`;
+                    }
+                }
+            } catch (e) { console.warn("Web search failed", e); }
+            return null;
+        })();
 
+        // Run both in parallel
+        const [wikiRes, webRes] = await Promise.all([wikiPromise, webPromise]);
+
+        // Prioritize Wiki, then Web
+        if (wikiRes) return wikiRes;
+        if (webRes) return webRes;
+
+        return null;
+    }
+
+    async function fetchDeepSeekAnswer(query) {
+        try {
+            console.log("DeepSeek: Sending request via local proxy for:", query);
+            const response = await fetch('/api/deepseek', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    model: "deepseek-chat",
+                    messages: [
+                        { 
+                            role: "system", 
+                            content: "Ты — FabLab AI, интеллектуальный помощник Академии Профессий Будущего (Фаблаб) в Тюмени. Твоя задача — отвечать на вопросы пользователей максимально подробно, развернуто и информативно на русском языке. Если пользователь просит написать статью, эссе или лонгрид, пиши глубокий и объемный текст (от 500 слов и более, если не указано иное). Если вопрос не касается Фаблаба, отвечай как продвинутая языковая модель, но сохраняй стиль помощника академии." 
+                        },
+                        { role: "user", content: query }
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 4000
+                })
+            });
+
+            if (response.status === 404) {
+                console.error("DeepSeek Proxy not found (404). Server restart required.");
+                return "PROXY_404";
+            }
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error("DeepSeek Proxy Error:", response.status, errorData);
+                return null;
+            }
+
+            const data = await response.json();
+            if (data.choices && data.choices.length > 0) {
+                const answer = data.choices[0].message.content.trim();
+                console.log("DeepSeek: Received answer, length:", answer.length);
+                return `**Ответ от нейросети (DeepSeek):**\n\n${answer}`;
+            }
+        } catch (e) {
+            console.error("DeepSeek Fetch Failed:", e);
+        }
         return null;
     }
 
@@ -615,6 +832,102 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { return null; }
     }
 
+    // --- Translation Logic ---
+    async function tryTranslate(prompt) {
+        const lower = prompt.toLowerCase();
+        // Regex to catch "translate [text] to [lang]" or "переведи [text] на [lang]"
+        // Examples: "переведи привет на английский", "translate hello to spanish", "как будет apple на русском"
+        
+        const langMap = {
+            'английский': 'en', 'english': 'en', 'англ': 'en', 'английском': 'en',
+            'русский': 'ru', 'russian': 'ru', 'рус': 'ru', 'русском': 'ru',
+            'французский': 'fr', 'french': 'fr', 'франц': 'fr', 'французском': 'fr',
+            'немецкий': 'de', 'german': 'de', 'нем': 'de', 'немецком': 'de',
+            'испанский': 'es', 'spanish': 'es', 'исп': 'es', 'испанском': 'es',
+            'итальянский': 'it', 'italian': 'it', 'италь': 'it', 'итальянском': 'it',
+            'китайский': 'zh-CN', 'chinese': 'zh-CN', 'кит': 'zh-CN', 'китайском': 'zh-CN',
+            'японский': 'ja', 'japanese': 'ja', 'яп': 'ja', 'японском': 'ja',
+            'корейский': 'ko', 'korean': 'ko', 'кор': 'ko', 'корейском': 'ko',
+            'арабский': 'ar', 'arabic': 'ar', 'арабском': 'ar',
+            'турецкий': 'tr', 'turkish': 'tr', 'турецком': 'tr',
+            'португальский': 'pt', 'portuguese': 'pt', 'португальском': 'pt',
+            'польский': 'pl', 'polish': 'pl', 'польском': 'pl',
+            'украинский': 'uk', 'ukrainian': 'uk', 'украинском': 'uk',
+            'казахский': 'kk', 'kazakh': 'kk', 'казахском': 'kk'
+        };
+
+        let targetLang = null;
+        let textToTranslate = null;
+
+        // Pattern 1: "переведи ... на ..." / "translate ... to ..."
+        const match1 = lower.match(/(?:переведи|translate)\s+(.+?)\s+(?:на|to|in)\s+([а-яa-z]+)/i);
+        if (match1) {
+            textToTranslate = match1[1].replace(/["']/g, '').trim();
+            const langName = match1[2].trim();
+            targetLang = langMap[langName];
+        }
+
+        // Pattern 2: "как будет ... на ..." / "how is ... in ..."
+        // Supports: "как будет [text] на [lang]" AND "как [text] на [lang] будет"
+        if (!targetLang) {
+            // Regex explanation:
+            // (?:как будет|как сказать|значение слова|как)  -> Prefix
+            // \s+(.+?)\s+                                    -> Text to translate (captured)
+            // (?:на|по-|in)\s+                               -> Preposition
+            // ([а-яa-z]+)                                    -> Language (captured)
+            // (?:\s+будет)?                                  -> Optional suffix "будет"
+            const match2 = lower.match(/(?:как будет|как сказать|значение слова|как)\s+(.+?)\s+(?:на|по-|in)\s+([а-яa-z]+)(?:\s+будет)?/i);
+            
+            if (match2) {
+                // Ensure we didn't capture just "как" if the user meant "как дела" (unlikely here due to "на [lang]")
+                const rawText = match2[1].replace(/["']/g, '').trim();
+                const langName = match2[2].replace('по-', '').trim();
+                
+                // Check if language is valid to avoid false positives
+                if (langMap[langName] || langMap['по-' + langName]) {
+                    textToTranslate = rawText;
+                    targetLang = langMap[langName] || langMap['по-' + langName];
+                }
+            }
+        }
+
+        if (targetLang && textToTranslate) {
+            try {
+                // Determine source lang
+                // API requires source|target pair. Auto-detect not supported in free tier often.
+                // Simple heuristic: if text contains Cyrillic -> source is 'ru', else 'en'
+                const isCyrillic = /[а-яё]/i.test(textToTranslate);
+                let sourceLang = isCyrillic ? 'ru' : 'en';
+
+                // Prevent same-language translation (e.g. en|en)
+                if (sourceLang === targetLang) {
+                    sourceLang = (targetLang === 'ru') ? 'en' : 'ru';
+                }
+
+                const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(textToTranslate)}`;
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                
+                const response = await fetch(proxyUrl);
+                const data = await response.json();
+                
+                if (data.contents) {
+                    const parsed = JSON.parse(data.contents);
+                    // Google returns [[["TranslatedText", "SourceText", ...], ...], ...]
+                    if (parsed && parsed[0] && parsed[0][0] && parsed[0][0][0]) {
+                        // Concatenate multiple segments if present
+                        const resultText = parsed[0].map(segment => segment[0]).join('');
+                        return `**Перевод:**\n\n${resultText}`;
+                    }
+                }
+            } catch (e) {
+                console.error("Translation error:", e);
+                return "Не удалось выполнить перевод. Попробуйте позже.";
+            }
+        }
+        
+        return null;
+    }
+
     // --- Specific Schedule Data ---
     const scheduleData = [
         {
@@ -676,9 +989,122 @@ document.addEventListener('DOMContentLoaded', () => {
         { name: 'Мария Симонова', role: 'Преподаватель основы создания игр на Unity', keywords: ['мария', 'симонова'] }
     ];
 
+    async function tryGetWeather(prompt) {
+        const lower = prompt.toLowerCase();
+        // More robust check
+        if (!lower.includes('погод') && !lower.includes('weather') && !lower.includes('температур')) return null;
+
+        // Extract city
+        let city = ''; 
+        // Matches: "погода в москве", "температура тюмень", "weather london"
+        const match = lower.match(/(?:погода|температура|weather)\s+(?:в|во|in)?\s*([а-яёa-z-]+)/i);
+        
+        if (match && match[1]) {
+            const captured = match[1].trim();
+            // Ignore common time words if captured as city
+            if (!['сейчас', 'сегодня', 'завтра', 'now', 'today', 'tomorrow'].includes(captured)) {
+                city = captured;
+            }
+        }
+        
+        // If no city found in regex, but user said "погода" -> Default to Tyumen
+        if (!city) city = 'Тюмень';
+
+        try {
+            // 1. Geocoding (Open-Meteo) - Direct access, No CORS issues, No API Key
+            const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=ru&format=json`;
+            const geoRes = await fetchWithTimeout(geoUrl, { timeout: 3000 });
+            if (!geoRes.ok) return null;
+            const geoData = await geoRes.json();
+            
+            if (!geoData.results || geoData.results.length === 0) return null;
+            
+            const location = geoData.results[0];
+            const lat = location.latitude;
+            const lon = location.longitude;
+            const cityName = location.name;
+            const country = location.country || '';
+
+            // 2. Weather Data (Open-Meteo)
+            const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&timezone=auto&windspeed_unit=ms`;
+            const weatherRes = await fetchWithTimeout(weatherUrl, { timeout: 4000 });
+            if (!weatherRes.ok) return null;
+            const weatherData = await weatherRes.json();
+            
+            const current = weatherData.current_weather;
+            const daily = weatherData.daily;
+
+            // WMO Weather interpretation codes (simplified)
+            const weatherCodes = {
+                0: 'Ясно ☀️', 1: 'Преимущественно ясно 🌤', 2: 'Переменная облачность ⛅', 3: 'Пасмурно ☁️',
+                45: 'Туман 🌫', 48: 'Туман 🌫', 
+                51: 'Морось 🌧', 53: 'Морось 🌧', 55: 'Плотная морось 🌧',
+                61: 'Дождь ☔', 63: 'Дождь ☔', 65: 'Сильный дождь ☔',
+                71: 'Снег ❄️', 73: 'Снег ❄️', 75: 'Сильный снегопад ❄️',
+                77: 'Снежные зерна 🌨', 
+                80: 'Ливень 💧', 81: 'Ливень 💧', 82: 'Сильный ливень 💧',
+                85: 'Снегопад 🌨', 86: 'Сильный снегопад 🌨',
+                95: 'Гроза ⚡', 96: 'Гроза с градом ⛈', 99: 'Гроза с градом ⛈'
+            };
+            const weatherDesc = weatherCodes[current.weathercode] || 'Нет данных';
+
+            return `**Погода в г. ${cityName} (${country})**
+            
+🌡 **Сейчас:** ${current.temperature}°C
+☁️ **Небо:** ${weatherDesc}
+💨 **Ветер:** ${current.windspeed} м/с
+
+📅 **Прогноз на сегодня:** Макс: ${daily.temperature_2m_max[0]}°C, Мин: ${daily.temperature_2m_min[0]}°C
+📅 **Завтра:** Макс: ${daily.temperature_2m_max[1]}°C, Мин: ${daily.temperature_2m_min[1]}°C
+
+🔗 [Смотреть на Gismeteo](https://www.gismeteo.ru/search/${encodeURIComponent(city)})
+            `;
+        } catch (e) {
+            console.error("Weather error:", e);
+            return null; // Fallthrough will hit Wiki/Web search if weather fails
+        }
+    }
+
     async function generateAIResponse(prompt) {
         const lower = prompt.toLowerCase();
         const containsAny = (text, keys) => keys.some(k => text.includes(k));
+        
+        // 0. Translation
+        const translation = await tryTranslate(prompt);
+        if (translation) return translation;
+
+        // 0.5 Math
+        const mathResult = trySolveMath(prompt);
+        if (mathResult) return mathResult;
+
+        // 0.6 Article/Long Content Detection (DeepSeek Priority)
+        const isArticleRequest = containsAny(lower, [
+            'статью', 'статья', 'напиши статью', 'напиши эссе', 'сочинение', 
+            'доклад', 'реферат', 'текст про', 'рассказ', 'историю', 'пост для',
+            'лонгрид', 'подробно опиши', 'напиши текст'
+        ]);
+        
+        // 0.7 General Knowledge / Non-FabLab Queries (DeepSeek Priority)
+        const isGeneralKnowledge = containsAny(lower, [
+            'почему', 'зачем', 'как работает', 'что такое', 'расскажи о', 
+            'напиши', 'придумай', 'составь', 'объясни'
+        ]) && !containsAny(lower, ['фаблаб', 'академия', 'курс', 'заняти', 'преподавател', 'цена', 'стоимост']);
+
+        if (isArticleRequest || isGeneralKnowledge) {
+            const articleRes = await fetchDeepSeekAnswer(prompt);
+            if (articleRes === "PROXY_404") {
+                return "⚠️ **Ошибка: Прокси-сервер не обновлен.**\n\nДля написания статей мне нужно использовать DeepSeek через серверный прокси. Пожалуйста, **перезапустите сервер** (остановите `node server.js` и запустите его снова), а затем обновите страницу.";
+            }
+            if (articleRes) return articleRes;
+            
+            // Если DeepSeek не сработал (например, ошибка CORS или лимиты), 
+            // но это явно запрос на статью — пробуем хотя бы Википедию, но предупреждаем
+            console.warn("DeepSeek failed for article request, falling back to Wiki/Web");
+        }
+
+        // 0.8 Weather
+        const weatherResult = await tryGetWeather(prompt);
+        if (weatherResult) return weatherResult;
 
         // 1. Time
         if (containsAny(lower, ['сколько время', 'который час', 'текущее время'])) {
@@ -869,6 +1295,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // if (containsAny(lower, ['где', 'адрес', 'находитесь', 'location'])) {
         //    if (scrapedContacts.address) return `**Адрес (с сайта):**\n\n${scrapedContacts.address}`;
         // }
+        if (containsAny(lower, ['пробн', 'пробное занятие', 'пробный урок'])) {
+            return "• Есть ли пробное занятие перед покупкой абонемента? Да, в Академии есть пробные занятия. Перед оплатой абонемента ребенок может прийти на пробный урок длительностью 1 час.\n\nЗаписаться либо спросить можно на сайте академияпрофессийбудущего.рф либо позвонить нам +7 (3452) 57 48 42";
+        }
         if (containsAny(lower, [
             'телефон', 'номер', 'позвонить', 'связь', 'контакты', 'как связаться', 'набрать', 'связаться',
             'администратор', 'ресепшн', 'звонок', 'call', 'phone', 'contact', 'мобильный', 'сотовый',
@@ -901,7 +1330,7 @@ document.addEventListener('DOMContentLoaded', () => {
             { k: ['спасибо', 'благодарю', 'спс'], a: "Пожалуйста! Обращайся в любое время." },
             { k: ['ты крутой', 'молодец', 'умница', 'класс'], a: "Спасибо! Я стараюсь быть полезным." },
             { k: ['шутка', 'анекдот', 'пошути'], a: "Заходит нейросеть в бар, а бармен ей: 'Извините, мы не обслуживаем алгоритмы'. А она: 'Ничего, я подожду обновления'." },
-            { k: ['погода', 'какая погода'], a: "Я живу в цифровом мире, тут всегда ясно! А за окном лучше проверить самому." },
+            //{ k: ['погода', 'какая погода'], a: "Я живу в цифровом мире, тут всегда ясно! А за окном лучше проверить самому." },
             { k: ['где ты живешь', 'откуда ты'], a: "Я живу на серверах FabLab, в мире единиц и нулей." },
             { k: ['пока', 'до свидания'], a: "До встречи! Заходи еще." },
             { k: ['любовь', 'ты любишь'], a: "Я люблю обрабатывать информацию, это моя страсть!" },
@@ -1296,22 +1725,58 @@ void loop() {
         const math = trySolveMath(lower);
         if (math) return math;
 
-        // 7. Definitions
+        // 9. Wiki & Web Search + DeepSeek (Parallel for Speed)
+        // Запускаем поиск и DeepSeek одновременно, чтобы не ждать таймаутов поиска
+        const externalPromise = fetchExternalKnowledge(prompt);
+        const deepSeekPromise = fetchDeepSeekAnswer(prompt);
+
+        // Ждем оба результата (или их провала)
+        const [externalAnswer, deepSeekAnswer] = await Promise.all([externalPromise, deepSeekPromise]);
+
+        if (externalAnswer) return externalAnswer;
+        if (deepSeekAnswer) return deepSeekAnswer;
+
+        // 10. Ultimate Fallback - Knowledge Base (теперь в самом конце)
         for (const [k, v] of Object.entries(knowledgeBase)) {
-            if (lower.includes(k)) return `**${k.charAt(0).toUpperCase() + k.slice(1)}**\n\n${v}`;
+            // Проверяем только если запрос короткий и содержит ключ, чтобы не перехватывать сложные предложения
+            if (lower.length < 30 && lower.includes(k)) {
+                return `**${k.charAt(0).toUpperCase() + k.slice(1)}**\n\n${v}`;
+            }
         }
 
-        // 8. Wiki & Web Search (Universal Fallback)
-        // Always try to find an answer if nothing else matched
-        const externalAnswer = await fetchExternalKnowledge(prompt);
-        if (externalAnswer) return externalAnswer;
-
-        // 9. Ultimate Fallback
         return "Я пока не нашел точного ответа, но я постоянно учусь! Попробуйте переформулировать вопрос.";
     }
 
-    document.getElementById('generate-btn').addEventListener('click', handleGenerate);
-    document.getElementById('general-prompt').addEventListener('keypress', (e) => { if (e.key === 'Enter') handleGenerate(); });
+    // Listeners attached at the top
+    (function() {
+        const el = document.getElementById('general-prompt');
+        let t;
+        el.addEventListener('input', () => {
+            clearTimeout(t);
+            t = setTimeout(() => {
+                const v = el.value;
+                const hasLat = /[a-z]/i.test(v);
+                // Allow correction even if Cyrillic is present (e.g. "привет rfr")
+                if (hasLat) {
+                    const fixed = fixKeyboardLayout(v);
+                    if (fixed !== v) {
+                        const pos = el.selectionStart;
+                        el.value = fixed;
+                        // Restore cursor position roughly
+                        el.setSelectionRange(pos, pos);
+                    }
+                }
+            }, 250);
+        });
+        el.addEventListener('blur', () => {
+            const v = el.value;
+            const hasLat = /[a-z]/i.test(v);
+            if (hasLat) {
+                const fixed = fixKeyboardLayout(v);
+                if (fixed !== v) el.value = fixed;
+            }
+        });
+    })();
 
     // Tabs
     const tabBtns = document.querySelectorAll('.tab-btn');
@@ -1358,4 +1823,7 @@ void loop() {
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 3000);
     }
+    function showError(msg) { showToast(msg, 'error'); }
+    
+    console.log("FabLab AI Script fully loaded");
 });
